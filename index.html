@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Форматирование изображения под A4</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        canvas {
+            margin-top: 10px;
+            border: 1px solid #ccc;
+            max-width: 70%;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Форматирование изображения под A4</h2>
+
+    <input type="file" id="imageInput" accept="image/*"><br><br>
+
+    <div class="controls">
+        <label>Количество изображений: 
+            <input type="number" id="imageCount" min="1" max="20" value="4">
+        </label>
+        <br><br>
+        <label>Расстояние по горизонтали (px): 
+            <input type="number" id="spacingX" min="0" value="0">
+        </label>
+        <br><br>
+        <label>Расстояние по вертикали (px): 
+            <input type="number" id="spacingY" min="0" value="0">
+        </label>
+        <br><br>
+        <label>
+            <input type="checkbox" id="keepOriginalSize"> Сохранять оригинальный размер
+        </label>
+        <br><br>
+        <button onclick="generateImage()">Сгенерировать</button>
+    </div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+    <br>
+    <button id="downloadBtn" style="display:none;" onclick="downloadImage()">Скачать изображение</button>
+
+    <script>
+        const A4_WIDTH = 2480;  // px (A4 300 DPI)
+        const A4_HEIGHT = 3508; // px (A4 300 DPI)
+
+        let originalImage = null;
+        let fileName = "output";
+
+        document.getElementById('imageInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                fileName = file.name.split('.').slice(0, -1).join('.');
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        originalImage = img;
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function generateImage() {
+            if (!originalImage) {
+                alert("Сначала загрузите изображение!");
+                return;
+            }
+
+            const count = parseInt(document.getElementById('imageCount').value);
+            const spacingX = parseInt(document.getElementById('spacingX').value);
+            const spacingY = parseInt(document.getElementById('spacingY').value);
+            const keepOriginalSize = document.getElementById('keepOriginalSize').checked;
+
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Определяем ориентацию A4
+            const isPortrait = originalImage.height > originalImage.width;
+            const A4W = isPortrait ? A4_HEIGHT : A4_WIDTH;
+            const A4H = isPortrait ? A4_WIDTH : A4_HEIGHT;
+
+            canvas.width = A4W;
+            canvas.height = A4H;
+
+            let imgWidth, imgHeight;
+
+            if (keepOriginalSize) {
+                imgWidth = originalImage.width;
+                imgHeight = originalImage.height;
+            } else {
+                // Рассчитываем количество колонок и строк
+                const cols = Math.ceil(Math.sqrt(count));
+                const rows = Math.ceil(count / cols);
+
+                imgWidth = (A4W - (cols - 1) * spacingX) / cols;
+                imgHeight = imgWidth * (originalImage.height / originalImage.width);
+
+                if ((rows * (imgHeight + spacingY) - spacingY) > A4H) {
+                    imgHeight = (A4H - (rows - 1) * spacingY) / rows;
+                    imgWidth = imgHeight * (originalImage.width / originalImage.height);
+                }
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            let index = 0;
+            for (let y = 0; y < A4H; y += imgHeight + spacingY) {
+                for (let x = 0; x < A4W; x += imgWidth + spacingX) {
+                    if (index >= count) break;
+                    if (x + imgWidth <= A4W && y + imgHeight <= A4H) {
+                        ctx.drawImage(originalImage, x, y, imgWidth, imgHeight);
+                        index++;
+                    }
+                }
+                if (index >= count) break;
+            }
+
+            // Отображаем предпросмотр
+            canvas.style.display = "block";
+            canvas.style.maxWidth = "70%";
+            document.getElementById('downloadBtn').style.display = "block";
+        }
+
+        function downloadImage() {
+            const canvas = document.getElementById('canvas');
+            const link = document.createElement('a');
+            link.download = `${fileName}_${document.getElementById('imageCount').value}_${canvas.width}x${canvas.height}.png`;
+            link.href = canvas.toDataURL("image/png");
+            
+            // Сохранение в указанную папку (Windows путь)
+            const blob = dataURLtoBlob(link.href);
+            const file = new File([blob], link.download, { type: "image/png" });
+
+            const desktopPath = "C:\\Users\\Evgeniya\\Desktop\\Для печати";
+            saveFile(file, desktopPath);
+
+            link.click();
+        }
+
+        function dataURLtoBlob(dataURL) {
+            const parts = dataURL.split(';base64,');
+            const contentType = parts[0].split(':')[1];
+            const raw = window.atob(parts[1]);
+            const array = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i++) {
+                array[i] = raw.charCodeAt(i);
+            }
+            return new Blob([array], { type: contentType });
+        }
+
+        function saveFile(file, path) {
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(file);
+            a.download = file.name;
+
+            // Пытаемся сохранить файл в нужную папку
+            try {
+                window.showSaveFilePicker({
+                    suggestedName: file.name,
+                    startIn: path
+                }).then((fileHandle) => {
+                    fileHandle.createWritable().then((writable) => {
+                        writable.write(file).then(() => {
+                            writable.close();
+                        });
+                    });
+                });
+            } catch (error) {
+                alert("Файл сохранен в стандартную папку загрузок.");
+            }
+        }
+    </script>
+
+</body>
+</html>
