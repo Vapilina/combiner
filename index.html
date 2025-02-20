@@ -30,12 +30,17 @@
             <input type="number" id="imageCount" min="1" max="20" value="4">
         </label>
         <br><br>
-        <label>Расстояние по горизонтали (px): 
-            <input type="number" id="spacingX" min="0" value="0">
+        <label>Размер изображения (мм):</label>
+        <br>
+        <label>Ширина: <input type="number" id="imageWidthMM" min="10" max="210" value="50"></label>
+        <label>Высота: <input type="number" id="imageHeightMM" min="10" max="297" value="50"></label>
+        <br><br>
+        <label>Расстояние по горизонтали (мм): 
+            <input type="number" id="spacingXMM" min="0" value="0">
         </label>
         <br><br>
-        <label>Расстояние по вертикали (px): 
-            <input type="number" id="spacingY" min="0" value="0">
+        <label>Расстояние по вертикали (мм): 
+            <input type="number" id="spacingYMM" min="0" value="0">
         </label>
         <br><br>
         <label>
@@ -50,11 +55,11 @@
     <button id="downloadBtn" style="display:none;" onclick="downloadImage()">Скачать изображение</button>
 
     <script>
-        const A4_WIDTH = 2480;  // px (A4 300 DPI)
-        const A4_HEIGHT = 3508; // px (A4 300 DPI)
-
+        const MM_TO_PX = 11.81;  // 1 мм = 11.81 пикселя при 300 DPI
         let originalImage = null;
+        let originalAspectRatio = 1;
         let fileName = "output";
+        let autoAdjust = true; // Флаг для предотвращения зацикливания пересчета
 
         document.getElementById('imageInput').addEventListener('change', function(event) {
             const file = event.target.files[0];
@@ -65,11 +70,39 @@
                     const img = new Image();
                     img.onload = function() {
                         originalImage = img;
+                        originalAspectRatio = img.height / img.width;
+                        updateHeight(); 
                     };
                     img.src = e.target.result;
                 };
                 reader.readAsDataURL(file);
             }
+        });
+
+        function updateHeight() {
+            if (!autoAdjust) return;
+            autoAdjust = false;
+            const widthMM = parseFloat(document.getElementById('imageWidthMM').value);
+            const newHeightMM = widthMM * originalAspectRatio;
+            document.getElementById('imageHeightMM').value = newHeightMM.toFixed(1);
+            autoAdjust = true;
+        }
+
+        function updateWidth() {
+            if (!autoAdjust) return;
+            autoAdjust = false;
+            const heightMM = parseFloat(document.getElementById('imageHeightMM').value);
+            const newWidthMM = heightMM / originalAspectRatio;
+            document.getElementById('imageWidthMM').value = newWidthMM.toFixed(1);
+            autoAdjust = true;
+        }
+
+        document.getElementById('imageWidthMM').addEventListener('input', function() {
+            if (autoAdjust) updateHeight();
+        });
+
+        document.getElementById('imageHeightMM').addEventListener('input', function() {
+            if (autoAdjust) updateWidth();
         });
 
         function generateImage() {
@@ -79,20 +112,17 @@
             }
 
             const count = parseInt(document.getElementById('imageCount').value);
-            const spacingX = parseInt(document.getElementById('spacingX').value);
-            const spacingY = parseInt(document.getElementById('spacingY').value);
+            const spacingX = parseInt(document.getElementById('spacingXMM').value) * MM_TO_PX;
+            const spacingY = parseInt(document.getElementById('spacingYMM').value) * MM_TO_PX;
             const keepOriginalSize = document.getElementById('keepOriginalSize').checked;
 
+            const A4_WIDTH = 210 * MM_TO_PX;
+            const A4_HEIGHT = 297 * MM_TO_PX;
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
 
-            // Определяем ориентацию A4
-            const isPortrait = originalImage.height > originalImage.width;
-            const A4W = isPortrait ? A4_HEIGHT : A4_WIDTH;
-            const A4H = isPortrait ? A4_WIDTH : A4_HEIGHT;
-
-            canvas.width = A4W;
-            canvas.height = A4H;
+            canvas.width = A4_WIDTH;
+            canvas.height = A4_HEIGHT;
 
             let imgWidth, imgHeight;
 
@@ -100,34 +130,22 @@
                 imgWidth = originalImage.width;
                 imgHeight = originalImage.height;
             } else {
-                // Рассчитываем количество колонок и строк
-                const cols = Math.ceil(Math.sqrt(count));
-                const rows = Math.ceil(count / cols);
-
-                imgWidth = (A4W - (cols - 1) * spacingX) / cols;
-                imgHeight = imgWidth * (originalImage.height / originalImage.width);
-
-                if ((rows * (imgHeight + spacingY) - spacingY) > A4H) {
-                    imgHeight = (A4H - (rows - 1) * spacingY) / rows;
-                    imgWidth = imgHeight * (originalImage.width / originalImage.height);
-                }
+                imgWidth = parseFloat(document.getElementById('imageWidthMM').value) * MM_TO_PX;
+                imgHeight = parseFloat(document.getElementById('imageHeightMM').value) * MM_TO_PX;
             }
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             let index = 0;
-            for (let y = 0; y < A4H; y += imgHeight + spacingY) {
-                for (let x = 0; x < A4W; x += imgWidth + spacingX) {
+            for (let y = 0; y + imgHeight <= A4_HEIGHT; y += imgHeight + spacingY) {
+                for (let x = 0; x + imgWidth <= A4_WIDTH; x += imgWidth + spacingX) {
                     if (index >= count) break;
-                    if (x + imgWidth <= A4W && y + imgHeight <= A4H) {
-                        ctx.drawImage(originalImage, x, y, imgWidth, imgHeight);
-                        index++;
-                    }
+                    ctx.drawImage(originalImage, x, y, imgWidth, imgHeight);
+                    index++;
                 }
                 if (index >= count) break;
             }
 
-            // Отображаем предпросмотр
             canvas.style.display = "block";
             canvas.style.maxWidth = "70%";
             document.getElementById('downloadBtn').style.display = "block";
@@ -138,47 +156,31 @@
             const link = document.createElement('a');
             link.download = `${fileName}_${document.getElementById('imageCount').value}_${canvas.width}x${canvas.height}.png`;
             link.href = canvas.toDataURL("image/png");
-            
-            // Сохранение в указанную папку (Windows путь)
-            const blob = dataURLtoBlob(link.href);
-            const file = new File([blob], link.download, { type: "image/png" });
+
+            saveFile(link.download, link.href);
+        }
+
+        function saveFile(fileName, dataUrl) {
+            const a = document.createElement("a");
+            a.href = dataUrl;
+            a.download = fileName;
 
             const desktopPath = "C:\\Users\\Evgeniya\\Desktop\\Для печати";
-            saveFile(file, desktopPath);
-
-            link.click();
-        }
-
-        function dataURLtoBlob(dataURL) {
-            const parts = dataURL.split(';base64,');
-            const contentType = parts[0].split(':')[1];
-            const raw = window.atob(parts[1]);
-            const array = new Uint8Array(raw.length);
-            for (let i = 0; i < raw.length; i++) {
-                array[i] = raw.charCodeAt(i);
-            }
-            return new Blob([array], { type: contentType });
-        }
-
-        function saveFile(file, path) {
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(file);
-            a.download = file.name;
-
-            // Пытаемся сохранить файл в нужную папку
             try {
                 window.showSaveFilePicker({
-                    suggestedName: file.name,
-                    startIn: path
+                    suggestedName: fileName,
+                    startIn: desktopPath
                 }).then((fileHandle) => {
                     fileHandle.createWritable().then((writable) => {
-                        writable.write(file).then(() => {
-                            writable.close();
-                        });
+                        fetch(dataUrl)
+                            .then(res => res.blob())
+                            .then(blob => writable.write(blob))
+                            .then(() => writable.close());
                     });
                 });
             } catch (error) {
                 alert("Файл сохранен в стандартную папку загрузок.");
+                a.click();
             }
         }
     </script>
