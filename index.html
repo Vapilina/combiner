@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Форматирование изображения под A4</title>
+    <title>Форматирование изображения</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -21,19 +21,23 @@
 </head>
 <body>
 
-    <h2>Форматирование изображения под A4</h2>
+    <h2>Форматирование изображения</h2>
 
     <input type="file" id="imageInput" accept="image/*"><br><br>
 
     <div class="controls">
-        <label>Количество изображений: 
-            <input type="number" id="imageCount" min="1" max="20" value="4">
+        <label>Ширина конечного изображения (мм): 
+            <input type="number" id="finalWidthMM" min="50" max="1000" value="210">
         </label>
+        <br><br>
+<label>Количество изображений: 
+    <input type="number" id="imageCount" min="1" max="1000" value="4">
+</label>
         <br><br>
         <label>Размер изображения (мм):</label>
         <br>
-        <label>Ширина: <input type="number" id="imageWidthMM" min="10" max="210" value="50"></label>
-        <label>Высота: <input type="number" id="imageHeightMM" min="10" max="297" value="50"></label>
+        <label>Ширина: <input type="number" id="imageWidthMM" min="10" max="1000" value="50"></label>
+        <label>Высота: <input type="number" id="imageHeightMM" min="10" max="1000" value="50"></label>
         <br><br>
         <label>Расстояние по горизонтали (мм): 
             <input type="number" id="spacingXMM" min="0" value="0">
@@ -55,11 +59,11 @@
     <button id="downloadBtn" style="display:none;" onclick="downloadImage()">Скачать изображение</button>
 
     <script>
-        const MM_TO_PX = 11.81;  // 1 мм = 11.81 пикселя при 300 DPI
+        const MM_TO_PX = 11.81;  
         let originalImage = null;
         let originalAspectRatio = 1;
         let fileName = "output";
-        let autoAdjust = true; // Флаг для предотвращения зацикливания пересчета
+        let autoAdjust = true;
 
         document.getElementById('imageInput').addEventListener('change', function(event) {
             const file = event.target.files[0];
@@ -71,7 +75,7 @@
                     img.onload = function() {
                         originalImage = img;
                         originalAspectRatio = img.height / img.width;
-                        updateHeight(); 
+                        updateHeight();
                     };
                     img.src = e.target.result;
                 };
@@ -83,8 +87,7 @@
             if (!autoAdjust) return;
             autoAdjust = false;
             const widthMM = parseFloat(document.getElementById('imageWidthMM').value);
-            const newHeightMM = widthMM * originalAspectRatio;
-            document.getElementById('imageHeightMM').value = newHeightMM.toFixed(1);
+            document.getElementById('imageHeightMM').value = (widthMM * originalAspectRatio).toFixed(1);
             autoAdjust = true;
         }
 
@@ -92,8 +95,7 @@
             if (!autoAdjust) return;
             autoAdjust = false;
             const heightMM = parseFloat(document.getElementById('imageHeightMM').value);
-            const newWidthMM = heightMM / originalAspectRatio;
-            document.getElementById('imageWidthMM').value = newWidthMM.toFixed(1);
+            document.getElementById('imageWidthMM').value = (heightMM / originalAspectRatio).toFixed(1);
             autoAdjust = true;
         }
 
@@ -112,18 +114,11 @@
             }
 
             const count = parseInt(document.getElementById('imageCount').value);
-            const spacingX = parseInt(document.getElementById('spacingXMM').value) * MM_TO_PX;
-            const spacingY = parseInt(document.getElementById('spacingYMM').value) * MM_TO_PX;
+            const spacingX = parseFloat(document.getElementById('spacingXMM').value) * MM_TO_PX;
+            const spacingY = parseFloat(document.getElementById('spacingYMM').value) * MM_TO_PX;
             const keepOriginalSize = document.getElementById('keepOriginalSize').checked;
 
-            const A4_WIDTH = 210 * MM_TO_PX;
-            const A4_HEIGHT = 297 * MM_TO_PX;
-            const canvas = document.getElementById('canvas');
-            const ctx = canvas.getContext('2d');
-
-            canvas.width = A4_WIDTH;
-            canvas.height = A4_HEIGHT;
-
+            const finalWidth = parseFloat(document.getElementById('finalWidthMM').value) * MM_TO_PX;
             let imgWidth, imgHeight;
 
             if (keepOriginalSize) {
@@ -134,11 +129,21 @@
                 imgHeight = parseFloat(document.getElementById('imageHeightMM').value) * MM_TO_PX;
             }
 
+            let rows = Math.floor(finalWidth / (imgWidth + spacingX));
+            let columns = Math.ceil(count / rows);
+            let finalHeight = columns * (imgHeight + spacingY) - spacingY;
+
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = finalWidth;
+            canvas.height = finalHeight;
+
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             let index = 0;
-            for (let y = 0; y + imgHeight <= A4_HEIGHT; y += imgHeight + spacingY) {
-                for (let x = 0; x + imgWidth <= A4_WIDTH; x += imgWidth + spacingX) {
+            for (let y = 0; y + imgHeight <= finalHeight; y += imgHeight + spacingY) {
+                for (let x = 0; x + imgWidth <= finalWidth; x += imgWidth + spacingX) {
                     if (index >= count) break;
                     ctx.drawImage(originalImage, x, y, imgWidth, imgHeight);
                     index++;
